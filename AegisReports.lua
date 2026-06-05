@@ -1,5 +1,5 @@
 local AEGIS_APP_NAME = "Aegis Reports"
-local AEGIS_APP_VERSION = "1.0"
+local AEGIS_APP_VERSION = "1.0.0"
 local AEGIS_APP_AUTHOR = "Casual Alvarez"
 local AEGIS_APP_TITLE = AEGIS_APP_NAME .. " v" .. AEGIS_APP_VERSION .. " by " .. AEGIS_APP_AUTHOR .. " |"
 local AEGIS_CHAT_PREFIX = "{FFA500}[" .. AEGIS_APP_TITLE .. "] {DCDCDC}"
@@ -7,6 +7,10 @@ local AEGIS_CONFIG_DIR = "AegisReports"
 local AEGIS_LEGACY_CONFIG_DIR = "AdminAutoAnswer"
 local TARGET_SERVER_IP = "185.169.134.239"
 local TARGET_SERVER_PORT = 7777
+local AEGIS_REPOSITORY_URL = "https://github.com/ameskrillex/Aegis-Reports"
+local AEGIS_MANIFEST_URL = "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/version.json"
+local AEGIS_DEFAULT_SCRIPT_URL = "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/AegisReports.lua"
+local AEGIS_DEFAULT_SCRIPT_FILE = "AegisReports.lua"
 
 script_name(AEGIS_APP_NAME)
 script_author(AEGIS_APP_AUTHOR)
@@ -108,8 +112,62 @@ local function utf8_to_cp1251(str)
 	return encodingUtf8:decode(str)
 end
 
+local function aaa_parse_version_parts(version)
+	local major, minor, patch = tostring(version or ""):match("^(%d+)%.?(%d*)%.?(%d*)$")
+	return tonumber(major) or 0, tonumber(minor) or 0, tonumber(patch) or 0
+end
+
+local function aaa_version_to_string(major, minor, patch)
+	return string.format("%d.%d.%d", tonumber(major) or 0, tonumber(minor) or 0, tonumber(patch) or 0)
+end
+
+local function aaa_compare_version_triplets(leftMajor, leftMinor, leftPatch, rightMajor, rightMinor, rightPatch)
+	leftMajor = tonumber(leftMajor) or 0
+	leftMinor = tonumber(leftMinor) or 0
+	leftPatch = tonumber(leftPatch) or 0
+	rightMajor = tonumber(rightMajor) or 0
+	rightMinor = tonumber(rightMinor) or 0
+	rightPatch = tonumber(rightPatch) or 0
+	if leftMajor ~= rightMajor then
+		return leftMajor > rightMajor and 1 or -1
+	end
+	if leftMinor ~= rightMinor then
+		return leftMinor > rightMinor and 1 or -1
+	end
+	if leftPatch ~= rightPatch then
+		return leftPatch > rightPatch and 1 or -1
+	end
+	return 0
+end
+
+local function aaa_compare_version_strings(leftVersion, rightVersion)
+	local leftMajor, leftMinor, leftPatch = aaa_parse_version_parts(leftVersion)
+	local rightMajor, rightMinor, rightPatch = aaa_parse_version_parts(rightVersion)
+	return aaa_compare_version_triplets(leftMajor, leftMinor, leftPatch, rightMajor, rightMinor, rightPatch)
+end
+
 local function aaa_cfg_path(fileName)
 	return AEGIS_CONFIG_DIR .. "\\" .. fileName
+end
+
+local function aaa_read_file(path)
+	local file = io.open(path, "rb")
+	if not file then
+		return nil, "open failed"
+	end
+	local data = file:read("*a")
+	file:close()
+	return data or ""
+end
+
+local function aaa_write_file(path, data)
+	local file = io.open(path, "wb")
+	if not file then
+		return false, "open failed"
+	end
+	file:write(data or "")
+	file:close()
+	return true
 end
 
 local function aaa_file_exists(path)
@@ -126,22 +184,102 @@ local function aaa_copy_file_if_missing(sourcePath, targetPath)
 		return false
 	end
 
-	local source = io.open(sourcePath, "rb")
-	if not source then
+	local data = aaa_read_file(sourcePath)
+	if data == nil then
 		return false
 	end
+	return aaa_write_file(targetPath, data)
+end
 
-	local data = source:read("*a")
-	source:close()
-
-	local target = io.open(targetPath, "wb")
-	if not target then
+local function aaa_copy_file(sourcePath, targetPath)
+	local data = aaa_read_file(sourcePath)
+	if data == nil then
 		return false
 	end
+	return aaa_write_file(targetPath, data)
+end
 
-	target:write(data or "")
-	target:close()
-	return true
+local function aaa_json_unescape(value)
+	value = tostring(value or "")
+	value = value:gsub("\\r", "\r")
+	value = value:gsub("\\n", "\n")
+	value = value:gsub("\\t", "\t")
+	value = value:gsub('\\"', '"')
+	value = value:gsub("\\\\", "\\")
+	return value
+end
+
+local function aaa_json_extract_string(text, key)
+	local raw = tostring(text or ""):match('"' .. key .. '"%s*:%s*"(.-)"')
+	if raw == nil then
+		return nil
+	end
+	return aaa_json_unescape(raw)
+end
+
+local function aaa_json_extract_number(text, key)
+	local raw = tostring(text or ""):match('"' .. key .. '"%s*:%s*(-?%d+)')
+	if raw == nil then
+		return nil
+	end
+	return tonumber(raw)
+end
+
+local function aaa_json_extract_boolean(text, key)
+	local raw = tostring(text or ""):match('"' .. key .. '"%s*:%s*(true|false)')
+	if raw == "true" then
+		return true
+	end
+	if raw == "false" then
+		return false
+	end
+	return nil
+end
+
+local function aaa_json_extract_object(text, key)
+	return tostring(text or ""):match('"' .. key .. '"%s*:%s*(%b{})')
+end
+
+local function aaa_json_extract_string_array(text, key)
+	local arrayBlock = tostring(text or ""):match('"' .. key .. '"%s*:%s*(%b%[%])')
+	local result = {}
+	if not arrayBlock then
+		return result
+	end
+	for value in arrayBlock:gmatch('"(.-)"') do
+		table.insert(result, aaa_json_unescape(value))
+	end
+	return result
+end
+
+local function aaa_parse_update_manifest(text)
+	if type(text) ~= "string" or text == "" then
+		return nil, "Пустой manifest."
+	end
+	local manifest = {}
+	local scriptBlock = aaa_json_extract_object(text, "script") or ""
+	local downloadBlock = aaa_json_extract_object(text, "download") or ""
+	manifest.repository = aaa_json_extract_string(text, "repository") or AEGIS_REPOSITORY_URL
+	manifest.required = aaa_json_extract_boolean(text, "required") or false
+	manifest.scriptFile = aaa_json_extract_string(scriptBlock, "file") or aaa_json_extract_string(downloadBlock, "file") or AEGIS_DEFAULT_SCRIPT_FILE
+	manifest.scriptUrl = aaa_json_extract_string(scriptBlock, "url") or aaa_json_extract_string(downloadBlock, "url") or AEGIS_DEFAULT_SCRIPT_URL
+	manifest.version = aaa_json_extract_string(text, "version") or ""
+	manifest.major = aaa_json_extract_number(text, "versionProduction")
+	manifest.minor = aaa_json_extract_number(text, "versionThisProduction")
+	manifest.patch = aaa_json_extract_number(text, "versionProgram")
+	if manifest.version ~= "" then
+		manifest.major, manifest.minor, manifest.patch = aaa_parse_version_parts(manifest.version)
+	end
+	manifest.major = tonumber(manifest.major) or 0
+	manifest.minor = tonumber(manifest.minor) or 0
+	manifest.patch = tonumber(manifest.patch) or 0
+	manifest.version = aaa_version_to_string(manifest.major, manifest.minor, manifest.patch)
+	manifest.changelog = aaa_json_extract_string_array(text, "changelog")
+	manifest.changelogText = #manifest.changelog > 0 and table.concat(manifest.changelog, "\n") or "Изменения не указаны."
+	if manifest.scriptUrl == "" then
+		return nil, "В manifest отсутствует script.url."
+	end
+	return manifest
 end
 
 local function aaa_migrate_legacy_storage()
@@ -827,10 +965,32 @@ end
 
 ffiLib.cdef("uint16_t __stdcall GetKeyState(int nVirtKey);\nstruct stKillEntry\n{\n\tchar\t\t\t\t\tszKiller[25];\n\tchar\t\t\t\t\tszVictim[25];\n\tuint32_t\t\t\t\tclKillerColor; // D3DCOLOR\n\tuint32_t\t\t\t\tclVictimColor; // D3DCOLOR\n\tuint8_t\t\t\t\t\tbyteType;\n} __attribute__ ((packed));\n\nstruct stKillInfo\n{\n\tint\t\t\t\t\t\tiEnabled;\n\tstruct stKillEntry\t\tkillEntry[5];\n\tint \t\t\t\t\tiLongestNickLength;\n  \tint \t\t\t\t\tiOffsetX;\n  \tint \t\t\t\t\tiOffsetY;\n\tvoid\t\t\t    \t*pD3DFont; // ID3DXFont\n\tvoid\t\t    \t\t*pWeaponFont1; // ID3DXFont\n\tvoid\t\t   \t    \t*pWeaponFont2; // ID3DXFont\n\tvoid\t\t\t\t\t*pSprite;\n\tvoid\t\t\t\t\t*pD3DDevice;\n\tint \t\t\t\t\tiAuxFontInited;\n    void \t\t    \t\t*pAuxFont1; // ID3DXFont\n    void \t\t\t    \t*pAuxFont2; // ID3DXFont\n} __attribute__ ((packed));\n")
 
-local AEGIS_VERSION_MAJOR, AEGIS_VERSION_MINOR, AEGIS_VERSION_PATCH = string.match(AEGIS_APP_VERSION, "^(%d+)%.?(%d*)%.?(%d*)$")
+local AEGIS_VERSION_MAJOR, AEGIS_VERSION_MINOR, AEGIS_VERSION_PATCH = aaa_parse_version_parts(AEGIS_APP_VERSION)
 globalversion1 = tonumber(AEGIS_VERSION_MAJOR) or 1
 globalversion2 = tonumber(AEGIS_VERSION_MINOR) or 0
 globalversion3 = tonumber(AEGIS_VERSION_PATCH) or 0
+version1 = globalversion1
+version2 = globalversion2
+version3 = globalversion3
+aaa_update_state = {
+	checking = false,
+	installing = false,
+	checked = false,
+	available = false,
+	required = false,
+	currentVersion = aaa_version_to_string(globalversion1, globalversion2, globalversion3),
+	latestVersion = aaa_version_to_string(globalversion1, globalversion2, globalversion3),
+	latestMajor = globalversion1,
+	latestMinor = globalversion2,
+	latestPatch = globalversion3,
+	changelog = {},
+	changelogText = "Изменения не указаны.",
+	error = "",
+	repository = AEGIS_REPOSITORY_URL,
+	manifestUrl = AEGIS_MANIFEST_URL,
+	scriptUrl = AEGIS_DEFAULT_SCRIPT_URL,
+	scriptFile = AEGIS_DEFAULT_SCRIPT_FILE
+}
 statusOnGetKey = false
 statusAFK = false
 gmped = false
@@ -1315,9 +1475,9 @@ timeStart = 0
 local legacyConfigData = iniFile.load({
 	settings = {
 		nickname = "",
-		versionProgram = "0",
-		versionThisProduction = "2",
-		versionProduction = "0"
+		versionProgram = tostring(globalversion3),
+		versionThisProduction = tostring(globalversion2),
+		versionProduction = tostring(globalversion1)
 	},
 	button = {
 		fullgoodgame1 = virtualKeys.VK_1,
@@ -1362,9 +1522,9 @@ local legacyConfigData = iniFile.load({
 local configData = iniFile.load({
 	settings = {
 		nickname = "",
-		versionProgram = "0",
-		versionThisProduction = "2",
-		versionProduction = "0"
+		versionProgram = tostring(globalversion3),
+		versionThisProduction = tostring(globalversion2),
+		versionProduction = tostring(globalversion1)
 	},
 	button = {
 		fullgoodgame1 = virtualKeys.VK_1,
@@ -2641,21 +2801,34 @@ local stateValue
 function moonImGui.OnDrawFrame()
 	if show_update_windows.v then
 		local timeValue, timeValue2 = getScreenResolution()
-		local timeValue3 = moonImGui.ImVec2(-0.1, 0)
+		local actionButtonSize = moonImGui.ImVec2(210, 28)
+		local closeButtonSize = moonImGui.ImVec2(120, 28)
 
 		moonImGui.SetNextWindowPos(moonImGui.ImVec2(timeValue / 2, timeValue2 / 2), moonImGui.Cond.FirstUseEver, moonImGui.ImVec2(0.5, 0.5))
-		moonImGui.SetNextWindowSize(moonImGui.ImVec2(450, 160), moonImGui.Cond.FirstUseEver)
+		moonImGui.SetNextWindowSize(moonImGui.ImVec2(520, 230), moonImGui.Cond.FirstUseEver)
 		moonImGui.Begin(u8(AEGIS_APP_NAME .. " v" .. AEGIS_APP_VERSION .. " | Обновление"), nil, moonImGui.WindowFlags.NoResize)
-		moonImGui.Text(u8("Обнаружено обновление до версии: ") .. version1 .. "." .. version2 .. "." .. version3)
+		moonImGui.Text(u8("Текущая версия: ") .. aaa_update_state.currentVersion)
+		moonImGui.Text(u8("Доступная версия: ") .. aaa_update_state.latestVersion)
 		moonImGui.Separator()
-		moonImGui.TextWrapped(u8("Для установки обновления необходимо подтверждение пользователя, разработчик настоятельно рекомендует принимать обновления ввиду того, что прошлые версии через определенное время отключаются и более не работают."))
-
-		if moonImGui.Button(u8("Скачать и установить обновление"), timeValue3) then
-			error_message = "Проверка и установка обновлений отключена."
+		moonImGui.TextWrapped(u8("Для установки обновления требуется подтверждение пользователя. После установки скрипт автоматически перезагрузится."))
+		if aaa_update_state.required then
+			moonImGui.TextColored(moonImGui.ImVec4(1.00, 0.53, 0.29, 1.00), u8("Это обновление помечено как обязательное."))
+		end
+		moonImGui.Separator()
+		moonImGui.TextWrapped(u8("Изменения:"))
+		moonImGui.TextWrapped(u8(aaa_update_state.changelogText or "Изменения не указаны."))
+		if aaa_update_state.error ~= "" then
+			moonImGui.Separator()
+			moonImGui.TextColored(moonImGui.ImVec4(1.00, 0.40, 0.40, 1.00), u8(aaa_update_state.error))
 		end
 
-		if moonImGui.Button(u8("Закрыть"), timeValue3) then
-			show_update_windows.v = not show_update_windows.v
+		if moonImGui.Button(u8("Скачать и установить"), actionButtonSize) then
+			aaa_install_update()
+		end
+
+		moonImGui.SameLine()
+		if moonImGui.Button(u8("Закрыть"), closeButtonSize) then
+			show_update_windows.v = false
 		end
 
 		moonImGui.End()
@@ -4255,7 +4428,7 @@ function moonImGui.OnDrawFrame()
 		end
 
 		if selected == 5 then
-			aaa_draw_settings_placeholder("Обновления", "Автоматическое обновление отключено. Текущая версия скрипта работает локально.")
+			aaa_draw_settings_placeholder("Обновления", "Скрипт проверяет manifest репозитория и позволяет установить новую версию через /update.")
 		end
 
 		moonImGui.EndGroup()
@@ -4797,12 +4970,171 @@ function click(param)
 	setVirtualKeyDown(virtualKeys.VK_NUMLOCK, false)
 end
 
-function update_check()
+local function aaa_update_chat(message, color)
+	sampAddChatMessage(AEGIS_CHAT_PREFIX .. tostring(message or ""), color or 14474460)
+end
+
+local function aaa_http_status_code(response)
+	return tonumber(response and (response.status_code or response.code or response.status or response.statusCode)) or 0
+end
+
+local function aaa_http_body(response)
+	local body = response and (response.text or response.body or response.content or response.response or response.data) or ""
+	if type(body) ~= "string" then
+		body = tostring(body or "")
+	end
+	return body
+end
+
+local function aaa_http_ok(response)
+	local statusCode = aaa_http_status_code(response)
+	return statusCode == 0 or (statusCode >= 200 and statusCode < 300)
+end
+
+local function aaa_script_file_path(fileName)
+	return getWorkingDirectory() .. "\\" .. tostring(fileName or AEGIS_DEFAULT_SCRIPT_FILE)
+end
+
+local function aaa_finish_update_check()
+	version1 = tonumber(aaa_update_state.latestMajor) or tonumber(globalversion1) or 0
+	version2 = tonumber(aaa_update_state.latestMinor) or tonumber(globalversion2) or 0
+	version3 = tonumber(aaa_update_state.latestPatch) or tonumber(globalversion3) or 0
+	ScriptCheckUpdate = true
+end
+
+local function aaa_handle_manifest_success(response, manual)
+	aaa_update_state.checking = false
+	if not aaa_http_ok(response) then
+		aaa_update_state.error = string.format("Не удалось получить manifest: HTTP %d.", aaa_http_status_code(response))
+		if manual then
+			aaa_update_chat(aaa_update_state.error)
+		end
+		aaa_finish_update_check()
+		return
+	end
+	local manifest, manifestError = aaa_parse_update_manifest(aaa_http_body(response))
+	if not manifest then
+		aaa_update_state.error = manifestError or "Не удалось разобрать manifest."
+		if manual then
+			aaa_update_chat(aaa_update_state.error)
+		end
+		aaa_finish_update_check()
+		return
+	end
+	aaa_update_state.checked = true
+	aaa_update_state.error = ""
+	aaa_update_state.manifest = manifest
+	aaa_update_state.repository = manifest.repository or AEGIS_REPOSITORY_URL
+	aaa_update_state.required = manifest.required and true or false
+	aaa_update_state.latestVersion = manifest.version
+	aaa_update_state.latestMajor = manifest.major
+	aaa_update_state.latestMinor = manifest.minor
+	aaa_update_state.latestPatch = manifest.patch
+	aaa_update_state.changelog = manifest.changelog or {}
+	aaa_update_state.changelogText = manifest.changelogText or "Изменения не указаны."
+	aaa_update_state.scriptUrl = manifest.scriptUrl or AEGIS_DEFAULT_SCRIPT_URL
+	aaa_update_state.scriptFile = manifest.scriptFile or AEGIS_DEFAULT_SCRIPT_FILE
+	aaa_update_state.available = aaa_compare_version_strings(manifest.version, aaa_update_state.currentVersion) > 0
+	show_update_windows.v = aaa_update_state.available
+	if aaa_update_state.available then
+		local message = "Найдена новая версия " .. aaa_update_state.latestVersion .. "."
+		if manual then
+			aaa_update_chat(message .. " Открываю окно обновления.")
+		else
+			aaa_update_chat(message .. " Используйте /update для просмотра.")
+		end
+	elseif manual then
+		aaa_update_chat("У вас уже установлена актуальная версия " .. aaa_update_state.currentVersion .. ".")
+	end
+	aaa_finish_update_check()
+end
+
+local function aaa_handle_manifest_error(err, manual)
+	aaa_update_state.checking = false
+	aaa_update_state.error = "Не удалось проверить обновления: " .. tostring(err or "unknown error")
+	if manual then
+		aaa_update_chat(aaa_update_state.error)
+	end
+	aaa_finish_update_check()
+end
+
+local function aaa_install_update()
+	if aaa_update_state.installing then
+		aaa_update_chat("Установка обновления уже выполняется.")
+		return
+	end
+	if aaa_update_state.checking then
+		aaa_update_chat("Сначала дождитесь завершения проверки обновлений.")
+		return
+	end
+	if not aaa_update_state.available or not aaa_update_state.manifest then
+		aaa_update_chat("Сначала получите свежий manifest через /update.")
+		return
+	end
+	aaa_update_state.installing = true
+	aaa_update_state.error = ""
+	aaa_update_chat("Скачиваю " .. aaa_update_state.scriptFile .. " из ameskrillex/Aegis-Reports...")
+	async_http_request("GET", aaa_update_state.scriptUrl, nil, function(response)
+		aaa_update_state.installing = false
+		if not aaa_http_ok(response) then
+			aaa_update_state.error = string.format("Не удалось скачать обновление: HTTP %d.", aaa_http_status_code(response))
+			aaa_update_chat(aaa_update_state.error)
+			return
+		end
+		local body = aaa_http_body(response)
+		if body == "" then
+			aaa_update_state.error = "Сервер вернул пустой файл обновления."
+			aaa_update_chat(aaa_update_state.error)
+			return
+		end
+		local finalPath = aaa_script_file_path(aaa_update_state.scriptFile)
+		local backupPath = finalPath .. ".bak"
+		if aaa_file_exists(finalPath) then
+			aaa_copy_file(finalPath, backupPath)
+		end
+		local ok, writeError = aaa_write_file(finalPath, body)
+		if not ok then
+			if aaa_file_exists(backupPath) then
+				aaa_copy_file(backupPath, finalPath)
+			end
+			aaa_update_state.error = "Не удалось записать обновление: " .. tostring(writeError or "open failed")
+			aaa_update_chat(aaa_update_state.error)
+			return
+		end
+		aaa_update_state.available = false
+		show_update_windows.v = false
+		aaa_update_chat("Обновление установлено. Перезагружаю скрипт...")
+		thisScript():reload()
+	end, function(err)
+		aaa_update_state.installing = false
+		aaa_update_state.error = "Не удалось скачать обновление: " .. tostring(err or "unknown error")
+		aaa_update_chat(aaa_update_state.error)
+	end)
+end
+
+function update_check(manual)
 	version1 = tonumber(globalversion1) or 0
 	version2 = tonumber(globalversion2) or 0
 	version3 = tonumber(globalversion3) or 0
 	script_version(AEGIS_APP_VERSION)
+	aaa_update_state.currentVersion = aaa_version_to_string(globalversion1, globalversion2, globalversion3)
 	ScriptCheckUpdate = true
+	if aaa_update_state.checking or aaa_update_state.installing then
+		if manual then
+			aaa_update_chat("Проверка или установка обновления уже выполняется.")
+		end
+		return
+	end
+	aaa_update_state.checking = true
+	aaa_update_state.error = ""
+	if manual then
+		aaa_update_chat("Проверяю обновления в ameskrillex/Aegis-Reports...")
+	end
+	async_http_request("GET", aaa_update_state.manifestUrl, nil, function(response)
+		aaa_handle_manifest_success(response, manual)
+	end, function(err)
+		aaa_handle_manifest_error(err, manual)
+	end)
 end
 
 function funt_updatenick()
@@ -5713,7 +6045,7 @@ function main()
 	end
 
 	sampAddChatMessage(string.format(AEGIS_CHAT_PREFIX .. "Автоответчик запущен."), 14474460)
-	sampAddChatMessage(string.format(AEGIS_CHAT_PREFIX .. "Обновление: команда меню вызывается через /am (/amenu)."), 14474460)
+	sampAddChatMessage(string.format(AEGIS_CHAT_PREFIX .. "Меню вызывается через /am (/amenu), проверка обновлений через /update."), 14474460)
 	update_check()
 
 	while not ScriptCheckUpdate do
@@ -5784,7 +6116,7 @@ function main()
 
 	iniFile.load(legacyConfigData, aaa_cfg_path("configautoanswer"))
 
-	if tonumber(globalversion1) > tonumber(legacyConfigData.settings.versionProduction) or tonumber(globalversion2) > tonumber(legacyConfigData.settings.versionThisProduction) or tonumber(globalversion3) > tonumber(legacyConfigData.settings.versionProgram) then
+	if aaa_compare_version_triplets(globalversion1, globalversion2, globalversion3, legacyConfigData.settings.versionProduction, legacyConfigData.settings.versionThisProduction, legacyConfigData.settings.versionProgram) > 0 then
 		configData.reconn.coordY = legacyConfigData.reconn.coordY
 		configData.reconn.coordX = legacyConfigData.reconn.coordX
 		configData.reconn.turn = legacyConfigData.reconn.turn
@@ -7458,8 +7790,14 @@ function cmdsetcolor(playerId)
 end
 
 function cmdUpdate()
-	sampAddChatMessage(string.format(AEGIS_CHAT_PREFIX .. "Проверка обновлений отключена."), 14474460)
+	if aaa_update_state.available then
+		show_update_windows.v = true
+		aaa_update_chat("Открываю окно доступного обновления " .. aaa_update_state.latestVersion .. ".")
+		return
+	end
+	update_check(true)
 end
+
 function fwt()
 	time1 = {}
 	time2 = {}
