@@ -1,0 +1,25 @@
+{
+  "name": "Aegis Reports",
+  "project": "Aegis Reports",
+  "repository": "https://github.com/ameskrillex/Aegis-Reports.git",
+  "channel": "stable",
+  "version": "1.0",
+  "versionProduction": 1,
+  "versionThisProduction": 0,
+  "versionProgram": 0,
+  "build": 1,
+  "required": false,
+  "script": {
+    "file": "AegisReports.lua",
+    "url": "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/AegisReports.lua",
+    "sha256": ""
+  },
+  "download": {
+    "url": "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/AegisReports.lua",
+    "file": "AegisReports.lua"
+  },
+  "changelog": [
+    "Подготовлен manifest автообновления для Aegis Reports."
+  ],
+  "createdAt": "2026-06-05"
+}
