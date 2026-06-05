@@ -3,7 +3,7 @@
   "project": "Aegis Reports",
   "repository": "https://github.com/ameskrillex/Aegis-Reports.git",
   "channel": "stable",
-  "version": "1.0",
+  "version": "1.0.0",
   "versionProduction": 1,
   "versionThisProduction": 0,
   "versionProgram": 0,
@@ -19,7 +19,9 @@
     "file": "AegisReports.lua"
   },
   "changelog": [
-    "Подготовлен manifest автообновления для Aegis Reports."
+    "Подключена проверка manifest и установка обновления из репозитория.",
+    "Исправлена кодировка changelog и текстов обновления.",
+    "Схема версий приведена к формату 1.0.0."
   ],
   "createdAt": "2026-06-05"
 }
