@@ -5718,6 +5718,10 @@ function update_check(manual)
 	end)
 end
 
+function aaa_check_updates()
+	return update_check(true)
+end
+
 function funt_updatenick()
 	while true do
 		wait(120000)
