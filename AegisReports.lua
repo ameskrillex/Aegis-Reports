@@ -1,5 +1,5 @@
 local AEGIS_APP_NAME = "Aegis Reports"
-local AEGIS_APP_VERSION = "1.0.1"
+local AEGIS_APP_VERSION = "1.1.1"
 local AEGIS_APP_AUTHOR = "Casual Alvarez"
 local AEGIS_APP_TITLE = AEGIS_APP_NAME .. " v" .. AEGIS_APP_VERSION .. " by " .. AEGIS_APP_AUTHOR
 local AEGIS_CHAT_PREFIX = "{FFA500}[" .. AEGIS_APP_TITLE .. "] {DCDCDC}"
@@ -37,6 +37,7 @@ local u8
 local aaa_mojibake_score
 local aaa_repair_mojibake_utf8
 local aaa_fix_embedded_string
+local aaa_install_update
 
 local function aaa_is_valid_utf8(str)
 	str = tostring(str or "")
@@ -6060,7 +6061,7 @@ local function aaa_handle_manifest_error(err, manual)
 	aaa_finish_update_check()
 end
 
-local function aaa_install_update()
+aaa_install_update = function()
 	if aaa_update_state.installing then
 		aaa_update_chat("Установка обновления уже выполняется.")
 		return
