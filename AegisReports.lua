@@ -1,5 +1,5 @@
 local AEGIS_APP_NAME = "Aegis Reports"
-local AEGIS_APP_VERSION = "1.1.1"
+local AEGIS_APP_VERSION = "1.1.2"
 local AEGIS_APP_AUTHOR = "Casual Alvarez"
 local AEGIS_APP_TITLE = AEGIS_APP_NAME .. " v" .. AEGIS_APP_VERSION .. " by " .. AEGIS_APP_AUTHOR
 local AEGIS_CHAT_PREFIX = "{FFA500}[" .. AEGIS_APP_TITLE .. "] {DCDCDC}"
@@ -996,8 +996,8 @@ function aaa_sql_load_report_history()
 	while row do
 		local item = {
 			id = row.player_id,
-			nick = aaa_sql_from_db(row.nick),
-			text = aaa_sql_from_db(row.text),
+			nick = aaa_fix_embedded_string(aaa_sql_from_db(row.nick)),
+			text = aaa_fix_embedded_string(aaa_sql_from_db(row.text)),
 			time = tonumber(row.time) or os.time()
 		}
 		aaa_report_history_store[row.record_key] = item
@@ -2572,6 +2572,16 @@ local aaa_builtin_answer_seed = {
 {answer="Да, для вступления в ФБР требуется 100% навыка Desert Eagle.",questions={"нужен ли дигл 100 в фбр"}},
 {answer="Да, для вступления в ФБР требуется 100% навыка M4.",questions={"нужна ли м4 100 в фбр"}},
 {answer="Для просмотра ближайших наборов используйте команду /join",questions={"где посмотреть наборы","как найти собеседование","как посмотреть наборы во фракции"}},
+{answer="Чтобы вызвать полицию позвоните по номеру 02.",questions={"как вызвать полицию","номер полиции","как позвонить в полицию","как вызвать мвд"}},
+{answer="Чтобы вызвать скорую помощь позвоните по номеру 03.",questions={"как вызвать скорую","номер скорой помощи","как позвонить в больницу","как вызвать медиков"}},
+{answer="Чтобы вызвать такси позвоните по номеру 555.",questions={"как вызвать такси","номер такси","как заказать такси","как позвонить таксисту"}},
+{answer="Чтобы вызвать механика позвоните по номеру 090.",questions={"как вызвать механика","номер механика","как позвонить механику","где найти механика"}},
+{answer="Чтобы связаться с мэрией позвоните по номеру 022.",questions={"как позвонить в мэрию","номер мэрии","как связаться с правительством","как позвонить в правительство"}},
+{answer="Чтобы узнать точное время позвоните по номеру 060.",questions={"как узнать точное время","номер точного времени","куда позвонить чтобы узнать время","как узнать время на сервере"}},
+{answer="Чтобы связаться с оператором связи позвоните по номеру 111.",questions={"как позвонить оператору","номер оператора связи","как связаться с оператором связи","как получить помощь по телефону"}},
+{answer="Чтобы посмотреть номера государственных служб откройте телефон и выберите раздел вызова.",questions={"где посмотреть номера служб"}},
+{answer="Основные номера служб: полиция — 02, скорая помощь — 03, такси — 555, механик — 090, мэрия — 022, служба точного времени — 060, оператор связи — 111.",questions={"какие есть номера служб"}},
+
 }
 
 local function aaa_merge_builtin_answer_seed()
@@ -3594,12 +3604,18 @@ local aaa_report_history_raw = iniFile.load({}, aaa_cfg_path("report_history"))
 if type(aaa_report_history_raw) == "table" then
 	for section, item in pairs(aaa_report_history_raw) do
 		if type(item) == "table" and type(item.text) == "string" and item.text ~= "" then
-			aaa_report_history_store[tostring(section)] = item
-			local key = tostring((item.nick and item.nick ~= "" and item.nick ~= "unknown") and item.nick or item.id or "?")
+			local fixedItem = {
+				id = tostring(item.id or ""),
+				nick = aaa_fix_embedded_string(item.nick or "unknown"),
+				text = aaa_fix_embedded_string(item.text or ""),
+				time = tonumber(item.time) or os.time()
+			}
+			aaa_report_history_store[tostring(section)] = fixedItem
+			local key = tostring((fixedItem.nick and fixedItem.nick ~= "" and fixedItem.nick ~= "unknown") and fixedItem.nick or fixedItem.id or "?")
 			if type(aaa_report_history[key]) ~= "table" then
 				aaa_report_history[key] = {}
 			end
-			table.insert(aaa_report_history[key], item)
+			table.insert(aaa_report_history[key], fixedItem)
 		end
 	end
 end
@@ -7490,8 +7506,8 @@ function aaa_format_history_item(item)
 		stamp = os.date("%H:%M:%S", itemTime) or stamp
 	end
 
-	local nick = item.nick or "unknown"
-	local text = item.text or ""
+	local nick = aaa_fix_embedded_string(item.nick or "unknown")
+	local text = aaa_fix_embedded_string(item.text or "")
 	local adminName, adminText = string.match(text, "^admin%s+([^:]+):%s*(.*)$")
 	if adminName then
 		return string.format("[%s] Админ %s: %s", stamp, adminName, adminText or "")
@@ -7506,6 +7522,8 @@ function aaa_format_history_item(item)
 end
 
 function aaa_add_report_history(id, nick, text)
+	nick = aaa_fix_embedded_string(nick or "unknown")
+	text = aaa_fix_embedded_string(text or "")
 	local key = tostring((nick and nick ~= "" and nick ~= "unknown") and nick or id or "?")
 	if configData and configData.status and configData.status.report_history_enabled == false then
 		return aaa_report_history[key] or {}
@@ -7516,8 +7534,8 @@ function aaa_add_report_history(id, nick, text)
 
 	local item = {
 		id = id,
-		nick = nick or "unknown",
-		text = text or "",
+		nick = nick,
+		text = text,
 		time = os.time()
 	}
 
