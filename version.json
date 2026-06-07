@@ -1,27 +1,26 @@
 {
   "name": "Aegis Reports",
   "project": "Aegis Reports",
-  "repository": "https://github.com/ameskrillex/Aegis-Reports.git",
+  "repository": "https://github.com/ameskrillex/Aegis-Reports",
   "channel": "stable",
-  "version": "1.1.0",
+  "version": "1.0.1",
   "versionProduction": 1,
   "versionThisProduction": 0,
-  "versionProgram": 0,
-  "build": 1,
+  "versionProgram": 1,
+  "build": 2,
   "required": false,
   "script": {
     "file": "AegisReports.lua",
-    "url": "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/AegisReports.lua",
-    "sha256": ""
+    "url": "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/AegisReports.lua"
   },
   "download": {
-    "url": "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/AegisReports.lua",
-    "file": "AegisReports.lua"
+    "file": "AegisReports.lua",
+    "url": "https://raw.githubusercontent.com/ameskrillex/Aegis-Reports/main/AegisReports.lua"
   },
   "changelog": [
-    "Подключена проверка manifest и установка обновления из репозитория.",
-    "Исправлена кодировка changelog и текстов обновления.",
-    "Схема версий приведена к формату 1.1.0."
+    "Обновлен manifest для штатной проверки обновлений.",
+    "Подготовлена версия 1.0.1 для загрузки AegisReports.lua из ветки main.",
+    "Формат файла оставлен совместимым с текущим апдейтером скрипта."
   ],
-  "createdAt": "2026-06-06"
+  "createdAt": "2026-06-07"
 }
